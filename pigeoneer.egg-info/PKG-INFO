@@ -1,3 +1,29 @@
+Metadata-Version: 2.4
+Name: pigeoneer
+Version: 0.1.0
+Summary: Python API for Pigeons.jl-based ZINB graphical model inference with marginal likelihood estimation
+Author-email: GW McElfresh <mcelfreshgw@gmail.com>
+License: GPL-3.0
+Project-URL: Homepage, https://github.com/GWMcElfresh/Pigeoneer
+Project-URL: Repository, https://github.com/GWMcElfresh/Pigeoneer
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: GNU General Public License v3 (GPLv3)
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Scientific/Engineering :: Bio-Informatics
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: numpy>=1.20.0
+Requires-Dist: scipy>=1.7.0
+Requires-Dist: juliacall>=0.9.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0.0; extra == "dev"
+
 # Pigeoneer
 
 A Python API for fitting **Zero-Inflated Negative Binomial (ZINB) graphical

@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pigeoneer"
+version = "0.1.0"
+description = "Python API for Pigeons.jl-based ZINB graphical model inference with marginal likelihood estimation"
+readme = "README.md"
+license = {text = "GPL-3.0"}
+authors = [
+    {name = "GW McElfresh", email = "mcelfreshgw@gmail.com"}
+]
+requires-python = ">=3.9"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+dependencies = [
+    "numpy>=1.20.0",
+    "scipy>=1.7.0",
+    "juliacall>=0.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/GWMcElfresh/Pigeoneer"
+Repository = "https://github.com/GWMcElfresh/Pigeoneer"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["pigeoneer*"]
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: marks tests that require Julia and juliacall (deselect with '-m \"not slow\"')",
+]
