@@ -63,7 +63,15 @@ RUN pip3 install --no-cache-dir --upgrade pip && \
 # --- Julia dependencies (pre-warm the Julia package depot) ---
 COPY juliapkg.json ./
 # juliapkg reads juliapkg.json and resolves/downloads the Julia packages.
-RUN python3 -c "import juliapkg; juliapkg.resolve()" || true
+# The || true is intentionally absent: a failure here means the depot is
+# broken and the slow integration tests would fail anyway.
+RUN python3 -c "import juliapkg; juliapkg.resolve()"
+
+# Pre-compile Pigeons and LogDensityProblems so the first test run is fast.
+RUN python3 -c "\
+from juliacall import Main as jl; \
+jl.seval('using Pigeons, LogDensityProblems'); \
+print('Julia packages pre-compiled successfully')"
 
 # ── runtime ───────────────────────────────────────────────────────────────────
 ARG DEPS_IMAGE
@@ -74,4 +82,4 @@ WORKDIR /app
 COPY . .
 RUN pip3 install --no-cache-dir -e ".[dev]"
 
-CMD ["pytest", "tests/", "-v", "-m", "not slow"]
+CMD ["pytest", "tests/", "-v"]

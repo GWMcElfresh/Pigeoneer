@@ -12,10 +12,10 @@ jobs:
       dockerfile-path: "."
       context: "."
       python-version: "3.11"
-      # Run the non-slow (no-Julia) pytest suite inside the container.
-      # Slow tests (Pigeons.jl integration) require Julia pre-installed in
-      # the image; they are skipped here to keep CI fast.
-      test-command: "pip install -e '.[dev]' && pytest tests/ -v -m 'not slow'"
+      # Run the full pytest suite, including the @pytest.mark.slow Julia
+      # integration tests. The deps image has Julia + Pigeons.jl pre-installed
+      # and pre-compiled, so all tests can run inside the container.
+      test-command: "pip install -e '.[dev]' && pytest tests/ -v"
       dependency-files: "juliapkg.json pyproject.toml"
       runtime-image-name: "pigeoneer:test"
       push-images: true
