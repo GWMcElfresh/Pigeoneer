@@ -30,7 +30,9 @@ Greek Parameters:
 from __future__ import annotations
 
 import numpy as np
-from scipy.special import gammaln, expit
+from scipy.special import gammaln, expit, betaln
+
+from .priors import ZINBPriorConfig
 
 
 def _nb_log_prob(x: np.ndarray, mu: np.ndarray, phi: np.ndarray) -> np.ndarray:
@@ -139,12 +141,11 @@ class ZINBLogDensity:
         ──────────────────────────────────────────────────────────────────
         (k = n*(n-1)/2,  n = n_features,  total dim = k + 3n + 3)
 
-    Priors (all evaluated in unconstrained space):
-        A_tril[i]  ~ Normal(0, prior_a_scale)
+    Priors are configured via :class:`~pigeoneer.ZINBPriorConfig`.  Defaults:
+        A_tril[i]  ~ Normal(0, 0.1)
         log_mu[j]  ~ Normal(0, 1)          [μ ~ LogNormal(0, 1)]
         log_phi[j] ~ Normal(0, 1)          [φ ~ LogNormal(0, 1)]
-        logit_pi[j]: Beta(1,1) on π ⟹ Jacobian correction
-                     log p = log π + log(1−π)
+        logit_pi[j]: Beta(1, 1) on π ⟹ Jacobian correction
         gamma_mu   ~ Normal(1, 0.5)
         gamma_phi  ~ Normal(0, 0.5)
         gamma_pi   ~ Normal(0, 0.5)
@@ -152,19 +153,32 @@ class ZINBLogDensity:
     Args:
         X: Count matrix of shape (n_samples, n_features).
         n_features: Number of features (genes/columns).
-        prior_a_scale: Prior standard deviation for A_tril. Default: 0.1.
+        prior: :class:`~pigeoneer.ZINBPriorConfig` instance with prior
+            hyperparameters.  Uses default priors when ``None``.
+        prior_a_scale: **Deprecated** shorthand for setting only
+            ``prior.a_tril_scale``.  Ignored when ``prior`` is provided.
+            Default: ``None`` (use value from ``prior``).
     """
 
     def __init__(
         self,
         X: np.ndarray,
         n_features: int,
-        prior_a_scale: float = 0.1,
+        prior: ZINBPriorConfig | None = None,
+        prior_a_scale: float | None = None,
     ) -> None:
         self.X = np.asarray(X, dtype=np.float64)
         self.n_features = n_features
         self.n_interactions = n_features * (n_features - 1) // 2
-        self.prior_a_scale = float(prior_a_scale)
+
+        # Build prior config — support legacy prior_a_scale kwarg.
+        if prior is None:
+            prior = ZINBPriorConfig()
+            if prior_a_scale is not None:
+                import dataclasses
+                prior = dataclasses.replace(prior, a_tril_scale=prior_a_scale)
+        self.prior = prior
+
         # Total dimension of the unconstrained parameter vector
         self.dim = self.n_interactions + 3 * n_features + 3
 
@@ -215,6 +229,7 @@ class ZINBLogDensity:
         """Log prior evaluated in unconstrained space.
 
         Includes Jacobian correction for the logit-π transformation.
+        Uses hyperparameters from :attr:`prior`.
 
         Args:
             x: Unconstrained parameter vector of length :attr:`dim`.
@@ -235,30 +250,52 @@ class ZINBLogDensity:
             gamma_pi,
         ) = self._decode(x)
 
-        # A_tril ~ Normal(0, prior_a_scale)
-        lp = -0.5 * np.sum((A_tril / self.prior_a_scale) ** 2) - len(
+        p = self.prior
+
+        # A_tril ~ Normal(0, a_tril_scale)
+        lp = -0.5 * np.sum((A_tril / p.a_tril_scale) ** 2) - len(
             A_tril
-        ) * np.log(self.prior_a_scale)
+        ) * np.log(p.a_tril_scale)
 
-        # log_mu ~ Normal(0, 1)  [μ ~ LogNormal(0,1)]
-        lp += -0.5 * np.sum(log_mu * log_mu)
+        # log_mu ~ Normal(mu_log_mean, mu_log_scale)  [μ ~ LogNormal]
+        lp += -0.5 * np.sum(((log_mu - p.mu_log_mean) / p.mu_log_scale) ** 2) - len(
+            log_mu
+        ) * np.log(p.mu_log_scale)
 
-        # log_phi ~ Normal(0, 1)  [φ ~ LogNormal(0,1)]
-        lp += -0.5 * np.sum(log_phi * log_phi)
+        # log_phi ~ Normal(phi_log_mean, phi_log_scale)  [φ ~ LogNormal]
+        lp += -0.5 * np.sum(((log_phi - p.phi_log_mean) / p.phi_log_scale) ** 2) - len(
+            log_phi
+        ) * np.log(p.phi_log_scale)
 
-        # logit_pi: Beta(1,1) on π = Uniform(0,1); Jacobian = π(1−π)
-        # log p(logit_pi) = log π + log(1−π)
+        # logit_pi: Beta(pi_alpha, pi_beta) on π with Jacobian correction.
+        # log p(logit_pi) = (pi_alpha)*log(π) + (pi_beta)*log(1−π) − log B(pi_alpha, pi_beta)
+        # The Jacobian of the logit transform dπ/d(logit_pi) = π(1−π) which gives log |J| = log π + log(1−π).
+        # Combined: (pi_alpha)*log(π) + (pi_beta)*log(1−π)
+        #           − log B(alpha,beta) + log(π) + log(1−π)
+        #         = (pi_alpha+1)*log(π) + (pi_beta+1)*log(1−π) − log B(alpha,beta)
         pi_s = np.clip(pi_zero, 1e-8, 1.0 - 1e-8)
-        lp += np.sum(np.log(pi_s) + np.log(1.0 - pi_s))
+        log_beta_const = float(betaln(p.pi_alpha, p.pi_beta))
+        lp += (
+            p.pi_alpha * np.sum(np.log(pi_s))
+            + p.pi_beta * np.sum(np.log(1.0 - pi_s))
+            + np.sum(np.log(pi_s) + np.log(1.0 - pi_s))
+            - len(pi_s) * log_beta_const
+        )
 
-        # gamma_mu ~ Normal(1, 0.5)
-        lp += -0.5 * ((gamma_mu - 1.0) / 0.5) ** 2
+        # gamma_mu ~ Normal(gamma_mu_mean, gamma_mu_scale)
+        lp += -0.5 * ((gamma_mu - p.gamma_mu_mean) / p.gamma_mu_scale) ** 2 - np.log(
+            p.gamma_mu_scale
+        )
 
-        # gamma_phi ~ Normal(0, 0.5)
-        lp += -0.5 * (gamma_phi / 0.5) ** 2
+        # gamma_phi ~ Normal(gamma_phi_mean, gamma_phi_scale)
+        lp += -0.5 * ((gamma_phi - p.gamma_phi_mean) / p.gamma_phi_scale) ** 2 - np.log(
+            p.gamma_phi_scale
+        )
 
-        # gamma_pi ~ Normal(0, 0.5)
-        lp += -0.5 * (gamma_pi / 0.5) ** 2
+        # gamma_pi ~ Normal(gamma_pi_mean, gamma_pi_scale)
+        lp += -0.5 * ((gamma_pi - p.gamma_pi_mean) / p.gamma_pi_scale) ** 2 - np.log(
+            p.gamma_pi_scale
+        )
 
         return float(lp)
 
@@ -358,12 +395,31 @@ class ZINBLogDensity:
         """Return a sensible initial parameter vector (prior means).
 
         Returns:
-            Zero vector of length :attr:`dim` with ``gamma_mu`` set to 1.
+            Vector of length :attr:`dim` set to prior means in unconstrained
+            space:
+
+            * A_tril = 0 (Normal mean)
+            * log_mu = ``prior.mu_log_mean``
+            * log_phi = ``prior.phi_log_mean``
+            * logit_pi = 0  (mid-point of Uniform(0,1))
+            * gamma_mu = ``prior.gamma_mu_mean``
+            * gamma_phi = ``prior.gamma_phi_mean``
+            * gamma_pi = ``prior.gamma_pi_mean``
         """
+        p = self.prior
         x0 = np.zeros(self.dim)
         k, n = self.n_interactions, self.n_features
-        # gamma_mu starts at prior mean = 1.0
-        x0[k + 3 * n] = 1.0
+
+        # log_mu and log_phi initialised to their prior means.
+        x0[k : k + n] = p.mu_log_mean
+        x0[k + n : k + 2 * n] = p.phi_log_mean
+        # logit_pi stays at 0 (maps to π = 0.5, uninformative).
+
+        # Gamma parameters initialised to their prior means.
+        x0[k + 3 * n] = p.gamma_mu_mean
+        x0[k + 3 * n + 1] = p.gamma_phi_mean
+        x0[k + 3 * n + 2] = p.gamma_pi_mean
+
         return x0
 
     def decode_params(self, x) -> dict:

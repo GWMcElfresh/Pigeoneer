@@ -290,16 +290,29 @@ class TestZINBLogDensityInitialParams:
         x0 = model.initial_params()
         assert len(x0) == model.dim
 
-    def test_gamma_mu_is_one(self):
+    def test_gamma_mu_is_prior_mean(self):
+        """gamma_mu initial value should equal prior.gamma_mu_mean."""
         model = _default_model()
         x0 = model.initial_params()
         n, k = model.n_features, model.n_interactions
-        assert x0[k + 3 * n] == 1.0
+        assert x0[k + 3 * n] == model.prior.gamma_mu_mean
 
     def test_a_tril_zeros(self):
         model = _default_model()
         x0 = model.initial_params()
         assert np.all(x0[: model.n_interactions] == 0.0)
+
+    def test_custom_prior_affects_initial_params(self):
+        """initial_params reflects custom gamma_mu_mean and mu_log_mean."""
+        from pigeoneer.priors import ZINBPriorConfig
+        from pigeoneer.model import ZINBLogDensity
+        prior = ZINBPriorConfig(gamma_mu_mean=2.5, mu_log_mean=1.0)
+        X = _make_X()
+        model = ZINBLogDensity(X, n_features=4, prior=prior)
+        x0 = model.initial_params()
+        n, k = model.n_features, model.n_interactions
+        assert abs(x0[k + 3 * n] - 2.5) < 1e-9       # gamma_mu
+        assert np.allclose(x0[k : k + n], 1.0)        # log_mu
 
 
 # ---------------------------------------------------------------------------
@@ -354,3 +367,93 @@ class TestLoadCountMatrix:
             np.save(fp, np.array([1.0, 2.0, 3.0]))
             X = load_count_matrix(str(fp))
         assert X.ndim == 2 and X.shape[1] == 1
+
+
+# ---------------------------------------------------------------------------
+# ZINBPriorConfig
+# ---------------------------------------------------------------------------
+
+class TestZINBPriorConfig:
+    def test_defaults_are_original_values(self):
+        """Default prior config reproduces the original hardcoded priors."""
+        from pigeoneer.priors import ZINBPriorConfig
+        p = ZINBPriorConfig()
+        assert p.a_tril_scale == 0.1
+        assert p.mu_log_mean == 0.0 and p.mu_log_scale == 1.0
+        assert p.phi_log_mean == 0.0 and p.phi_log_scale == 1.0
+        assert p.pi_alpha == 1.0 and p.pi_beta == 1.0
+        assert p.gamma_mu_mean == 1.0 and p.gamma_mu_scale == 0.5
+        assert p.gamma_phi_mean == 0.0 and p.gamma_phi_scale == 0.5
+        assert p.gamma_pi_mean == 0.0 and p.gamma_pi_scale == 0.5
+
+    def test_custom_values_stored(self):
+        from pigeoneer.priors import ZINBPriorConfig
+        p = ZINBPriorConfig(
+            a_tril_scale=0.5,
+            mu_log_mean=1.0,
+            mu_log_scale=2.0,
+            pi_alpha=2.0,
+            pi_beta=5.0,
+            gamma_mu_mean=0.0,
+        )
+        assert p.a_tril_scale == 0.5
+        assert p.mu_log_mean == 1.0
+        assert p.mu_log_scale == 2.0
+        assert p.pi_alpha == 2.0
+        assert p.pi_beta == 5.0
+        assert p.gamma_mu_mean == 0.0
+
+    def test_invalid_scale_raises(self):
+        from pigeoneer.priors import ZINBPriorConfig
+        with pytest.raises(ValueError, match="a_tril_scale"):
+            ZINBPriorConfig(a_tril_scale=-0.1)
+
+    def test_invalid_pi_alpha_raises(self):
+        from pigeoneer.priors import ZINBPriorConfig
+        with pytest.raises(ValueError, match="pi_alpha"):
+            ZINBPriorConfig(pi_alpha=0.0)
+
+    def test_log_prior_uses_custom_prior(self):
+        """Custom prior shifts the peak of the log prior."""
+        from pigeoneer.priors import ZINBPriorConfig
+        from pigeoneer.model import ZINBLogDensity
+        X = _make_X()
+        # Prior with gamma_mu centered at 2.0
+        prior_custom = ZINBPriorConfig(gamma_mu_mean=2.0)
+        prior_default = ZINBPriorConfig()  # gamma_mu centered at 1.0
+
+        model_c = ZINBLogDensity(X, n_features=4, prior=prior_custom)
+        model_d = ZINBLogDensity(X, n_features=4, prior=prior_default)
+
+        # At gamma_mu=2 custom prior should score higher than default prior
+        x_at_2 = model_c.initial_params()  # starts at gamma_mu_mean = 2.0
+        lp_custom = model_c.log_prior(x_at_2)
+        lp_default = model_d.log_prior(x_at_2)
+        assert lp_custom > lp_default
+
+    def test_legacy_prior_a_scale_kwarg(self):
+        """prior_a_scale kwarg is still accepted for backward compatibility."""
+        from pigeoneer.model import ZINBLogDensity
+        X = _make_X()
+        model = ZINBLogDensity(X, n_features=4, prior_a_scale=0.5)
+        assert model.prior.a_tril_scale == 0.5
+
+    def test_prior_stored_on_model(self):
+        from pigeoneer.priors import ZINBPriorConfig
+        from pigeoneer.model import ZINBLogDensity
+        p = ZINBPriorConfig(a_tril_scale=0.2)
+        X = _make_X()
+        model = ZINBLogDensity(X, n_features=4, prior=p)
+        assert model.prior is p
+
+    def test_custom_beta_prior_changes_log_prior(self):
+        """Beta(2, 5) prior differs from Beta(1, 1) uniform."""
+        from pigeoneer.priors import ZINBPriorConfig
+        from pigeoneer.model import ZINBLogDensity
+        X = _make_X()
+        model_uniform = ZINBLogDensity(X, n_features=4, prior=ZINBPriorConfig(pi_alpha=1.0, pi_beta=1.0))
+        model_beta = ZINBLogDensity(X, n_features=4, prior=ZINBPriorConfig(pi_alpha=2.0, pi_beta=5.0))
+        x0 = model_uniform.initial_params()
+        lp_u = model_uniform.log_prior(x0)
+        lp_b = model_beta.log_prior(x0)
+        assert lp_u != lp_b

@@ -48,9 +48,11 @@ Requirements
 from .model import ZINBLogDensity, _build_omega, _nb_log_prob, _zinb_log_prob
 from .inference import run_pigeons_inference, _compute_summary
 from .data import load_count_matrix
+from .priors import ZINBPriorConfig
 
 __all__ = [
     "ZINBLogDensity",
+    "ZINBPriorConfig",
     "run_pigeons_inference",
     "load_count_matrix",
     "_build_omega",

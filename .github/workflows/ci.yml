@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    uses: GWMcElfresh/dockerDependencies/.github/workflows/docker-cache.yml@main
+    with:
+      dockerfile-path: "."
+      context: "."
+      python-version: "3.11"
+      # Run the non-slow (no-Julia) pytest suite inside the container.
+      # Slow tests (Pigeons.jl integration) require Julia pre-installed in
+      # the image; they are skipped here to keep CI fast.
+      test-command: "pip install -e '.[dev]' && pytest tests/ -v -m 'not slow'"
+      dependency-files: "juliapkg.json pyproject.toml"
+      runtime-image-name: "pigeoneer:test"
+      push-images: true
+      push-runtime: false
+    permissions:
+      contents: read
+      packages: write
+    secrets: inherit

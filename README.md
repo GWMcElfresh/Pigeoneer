@@ -78,13 +78,20 @@ on first use.
 
 ```python
 import numpy as np
-from pigeoneer import ZINBLogDensity, run_pigeons_inference, load_count_matrix
+from pigeoneer import ZINBLogDensity, ZINBPriorConfig, run_pigeons_inference, load_count_matrix
 
 # Load count matrix (cells × genes) from CSV / TSV / NPY / NPZ
 X = load_count_matrix("counts.csv")
 
+# (Optional) configure custom priors
+prior = ZINBPriorConfig(
+    a_tril_scale=0.5,     # wider prior on interaction strengths
+    pi_alpha=2.0,         # Beta(2, 5) → favour low zero-inflation
+    pi_beta=5.0,
+)
+
 # Define the ZINB graphical-model log density
-model = ZINBLogDensity(X, n_features=X.shape[1])
+model = ZINBLogDensity(X, n_features=X.shape[1], prior=prior)
 
 # Run Pigeons.jl parallel tempering
 # n_rounds=10  →  2^10 = 1024 posterior samples
@@ -106,10 +113,37 @@ pi_mean    = results["summary"]["pi_zero"]["mean"]
 
 ## API reference
 
+### `ZINBPriorConfig`
+
+```python
+ZINBPriorConfig(
+    a_tril_scale=0.1,
+    mu_log_mean=0.0, mu_log_scale=1.0,
+    phi_log_mean=0.0, phi_log_scale=1.0,
+    pi_alpha=1.0, pi_beta=1.0,
+    gamma_mu_mean=1.0, gamma_mu_scale=0.5,
+    gamma_phi_mean=0.0, gamma_phi_scale=0.5,
+    gamma_pi_mean=0.0, gamma_pi_scale=0.5,
+)
+```
+
+Dataclass holding prior hyperparameters for every model parameter.
+Pass an instance to `ZINBLogDensity` to override the defaults.
+
+| Field | Prior | Default |
+|-------|-------|---------|
+| `a_tril_scale` | A_tril ~ Normal(0, ·) | 0.1 |
+| `mu_log_mean` / `mu_log_scale` | μ ~ LogNormal(·, ·) | 0, 1 |
+| `phi_log_mean` / `phi_log_scale` | φ ~ LogNormal(·, ·) | 0, 1 |
+| `pi_alpha` / `pi_beta` | π ~ Beta(·, ·) | 1, 1 (= Uniform) |
+| `gamma_mu_mean` / `gamma_mu_scale` | γ_μ ~ Normal(·, ·) | 1, 0.5 |
+| `gamma_phi_mean` / `gamma_phi_scale` | γ_φ ~ Normal(·, ·) | 0, 0.5 |
+| `gamma_pi_mean` / `gamma_pi_scale` | γ_π ~ Normal(·, ·) | 0, 0.5 |
+
 ### `ZINBLogDensity`
 
 ```python
-ZINBLogDensity(X, n_features, prior_a_scale=0.1)
+ZINBLogDensity(X, n_features, prior=None)
 ```
 
 Encapsulates the data and the ZINB pseudo-likelihood log density for use
@@ -150,6 +184,24 @@ load_count_matrix(filepath)
 
 Load a count matrix from `.csv`, `.tsv`, `.npy`, or `.npz` and return a
 `float64` numpy array of shape `(n_samples, n_features)`.
+
+---
+
+## Docker
+
+The repository ships a multi-stage `Dockerfile` with `deps` and `runtime`
+targets.
+
+```bash
+# Build the deps image (dependencies only — cacheable)
+docker build --target deps -t pigeoneer:deps .
+
+# Build the full runtime image
+docker build -t pigeoneer:latest .
+
+# Run tests inside the container
+docker run --rm pigeoneer:latest
+```
 
 ---
 
