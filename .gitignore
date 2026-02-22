@@ -1,0 +1,28 @@
+# Python build artifacts
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Julia artifacts managed by juliapkg / juliacall
+.julia/
+julia_env/
+
+# IDEs
+.vscode/
+.idea/
