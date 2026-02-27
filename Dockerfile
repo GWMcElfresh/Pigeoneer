@@ -43,11 +43,21 @@ RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTH
     update-alternatives --install /usr/bin/python  python  /usr/bin/python${PYTHON_VERSION} 10 2>/dev/null || true
 
 # --- Julia ---
+# Julia's download URL uses different arch strings in the path vs the filename:
+#   path dir:  x64       (for x86_64),  aarch64 (for aarch64)
+#   filename:  x86_64    (for x86_64),  aarch64 (for aarch64)
 RUN ARCH=$(uname -m) && \
-    if [ "$ARCH" = "x86_64" ]; then JULIA_ARCH="x86_64"; \
-    elif [ "$ARCH" = "aarch64" ]; then JULIA_ARCH="aarch64"; \
-    else echo "Unsupported arch: $ARCH" && exit 1; fi && \
-    curl -fsSL "https://julialang-s3.julialang.org/bin/linux/${JULIA_ARCH}/$(echo ${JULIA_VERSION} | cut -d. -f1-2)/julia-${JULIA_VERSION}-linux-${JULIA_ARCH}.tar.gz" \
+    if [ "$ARCH" = "x86_64" ]; then \
+        JULIA_PATH_ARCH="x64"; \
+        JULIA_FILE_ARCH="x86_64"; \
+    elif [ "$ARCH" = "aarch64" ]; then \
+        JULIA_PATH_ARCH="aarch64"; \
+        JULIA_FILE_ARCH="aarch64"; \
+    else \
+        echo "Unsupported architecture: $ARCH" && exit 1; \
+    fi && \
+    JULIA_MINOR=$(echo "${JULIA_VERSION}" | cut -d. -f1-2) && \
+    curl -fsSL "https://julialang-s3.julialang.org/bin/linux/${JULIA_PATH_ARCH}/${JULIA_MINOR}/julia-${JULIA_VERSION}-linux-${JULIA_FILE_ARCH}.tar.gz" \
         -o /tmp/julia.tar.gz && \
     tar -xzf /tmp/julia.tar.gz -C /opt && \
     ln -sf /opt/julia-${JULIA_VERSION}/bin/julia /usr/local/bin/julia && \
