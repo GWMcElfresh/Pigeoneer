@@ -3,11 +3,11 @@
     "packages": {
         "Pigeons": {
             "uuid": "0eb8d820-af6a-4919-95ae-11206f830c31",
-            "version": ">=0.3"
+            "version": "0.3"
         },
         "LogDensityProblems": {
             "uuid": "6fdf6af0-433a-55f7-b3ed-c6c6e0b8df7c",
-            "version": ">=2"
+            "version": "2"
         }
     }
 }
