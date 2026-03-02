@@ -190,7 +190,7 @@ def run_pigeons_inference(
         "    pigeons(\n"
         + _common_args
         + _seed_arg
-        + "        record   = [Pigeons.record_samples(); Pigeons.record_default()...],\n"
+        + "        record   = [record_samples; record_default()...],\n"
         "    )\n"
         "end\n"
     )
