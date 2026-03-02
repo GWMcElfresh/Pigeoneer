@@ -90,6 +90,19 @@ def _setup_julia():
             f"Julia error: {exc}"
         ) from exc
 
+    # Verify that the key Pigeons exports we rely on are visible in Main after
+    # `using Pigeons`.  This surfaces missing-symbol errors early with a clear
+    # message instead of a cryptic JuliaError inside run_pigeons_inference.
+    for symbol in ("traces", "record_default", "sample_array", "stepping_stone"):
+        defined = bool(jl.seval(f"isdefined(Main, :{symbol})"))
+        if not defined:
+            raise RuntimeError(
+                f"Pigeons.jl was loaded but the required symbol '{symbol}' "
+                "is not defined in Julia Main.  This usually means the "
+                "installed Pigeons version is incompatible with this bridge.  "
+                "Ensure Pigeons.jl v0.3.x is installed via juliapkg.json."
+            )
+
     jl.seval(_JULIA_BRIDGE_CODE)
 
     _JL = jl
@@ -190,11 +203,19 @@ def run_pigeons_inference(
         "    pigeons(\n"
         + _common_args
         + _seed_arg
-        + "        record   = [record_samples; record_default()...],\n"
+        + "        record   = [traces; record_default()...],\n"
         "    )\n"
         "end\n"
     )
-    pt = jl.seval(script)
+    try:
+        pt = jl.seval(script)
+    except Exception as exc:
+        raise RuntimeError(
+            "Pigeons.jl pigeons() call failed.  "
+            "This is typically a Julia package/environment error.  "
+            f"Julia script:\n{script}\n"
+            f"Original error: {exc!r}"
+        ) from exc
 
     # Extract posterior samples as a numpy matrix (n_samples × dim).
     sample_mat = np.array(jl.sample_array(pt), dtype=np.float64)
