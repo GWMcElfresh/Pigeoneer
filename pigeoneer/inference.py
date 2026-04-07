@@ -52,7 +52,7 @@ LogDensityProblems.logdensity(p::PythonLogDensity, x) =
 LogDensityProblems.dimension(p::PythonLogDensity) = p.dim
 
 LogDensityProblems.capabilities(::Type{PythonLogDensity}) =
-    LogDensityProblems.LogDensityOrder{0}()
+    LogDensityProblems.LogDensityOrder{0}
 """
 
 
