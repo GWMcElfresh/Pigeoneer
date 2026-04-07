@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    uses: GWMcElfresh/dockerDependencies/.github/workflows/docker-cache.yml@main
+    with:
+      dockerfile-path: "."
+      context: "."
+      python-version: "3.11"
+      # Run the full pytest suite, including the @pytest.mark.slow Julia
+      # integration tests. The deps image has Julia + Pigeons.jl pre-installed
+      # and pre-compiled, so all tests can run inside the container.
+      test-command: "pip install -e '.[dev]' && pytest tests/ -v"
+      dependency-files: "juliapkg.json pyproject.toml"
+      runtime-image-name: "pigeoneer:test"
+      push-images: true
+      push-runtime: false
+    permissions:
+      contents: read
+      packages: write
+    secrets: inherit
